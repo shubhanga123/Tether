@@ -62,7 +62,7 @@ class MainActivity : Activity() {
 
                 writer.println("PAIR:$code")
 
-                val response = reader.readLine()
+                val response = reader.readLine()?.trim()
 
                 runOnUiThread {
                     if (response == "OK") {
