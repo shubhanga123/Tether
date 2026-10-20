@@ -1,40 +1,84 @@
 package app.tether
 
 import android.app.Activity
-import android.graphics.Color
-import android.graphics.Typeface
 import android.os.Bundle
-import android.view.Gravity
-import android.widget.LinearLayout
+import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.PrintWriter
+import java.net.Socket
+import java.security.cert.X509Certificate
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 
 class MainActivity : Activity() {
 
+    private lateinit var ipInput: EditText
+    private lateinit var codeInput: EditText
+    private lateinit var connectButton: Button
+    private lateinit var statusText: TextView
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
 
-        val root = LinearLayout(this)
-        root.orientation = LinearLayout.VERTICAL
-        root.gravity = Gravity.CENTER
-        root.setBackgroundColor(Color.parseColor("#1F8A4C"))
-        root.setPadding(48, 48, 48, 48)
+        ipInput = findViewById(R.id.ipInput)
+        codeInput = findViewById(R.id.codeInput)
+        connectButton = findViewById(R.id.connectButton)
+        statusText = findViewById(R.id.statusText)
 
-        val title = TextView(this)
-        title.text = "Tether"
-        title.textSize = 40f
-        title.setTextColor(Color.WHITE)
-        title.typeface = Typeface.DEFAULT_BOLD
-        title.gravity = Gravity.CENTER
+        connectButton.setOnClickListener {
+            val ip = ipInput.text.toString().trim()
+            val code = codeInput.text.toString().trim()
 
-        val status = TextView(this)
-        status.text = "Phone app is working\nStep 1 - version 0.1.0"
-        status.textSize = 20f
-        status.setTextColor(Color.WHITE)
-        status.gravity = Gravity.CENTER
-        status.setPadding(0, 32, 0, 0)
+            if (ip.isEmpty() || code.isEmpty()) {
+                statusText.text = "Please enter both IP and Code."
+                return@setOnClickListener
+            }
 
-        root.addView(title)
-        root.addView(status)
-        setContentView(root)
+            statusText.text = "Connecting to $ip..."
+            connectToPc(ip, code)
+        }
+    }
+
+    private fun connectToPc(ip: String, code: String) {
+        Thread {
+            try {
+                val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
+                    override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+                    override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+                    override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+                })
+
+                val sslContext = SSLContext.getInstance("TLS")
+                sslContext.init(null, trustAllCerts, java.security.SecureRandom())
+
+                val socket: Socket = sslContext.socketFactory.createSocket(ip, 8443)
+                val writer = PrintWriter(socket.getOutputStream(), true)
+                val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+
+                writer.println("PAIR:$code")
+
+                val response = reader.readLine()
+
+                runOnUiThread {
+                    if (response == "OK") {
+                        statusText.text = "Connected!"
+                        statusText.setTextColor(0xFF2ECC71.toInt())
+                    } else {
+                        statusText.text = "Pairing failed: $response"
+                    }
+                }
+
+                socket.close()
+            } catch (e: Exception) {
+                runOnUiThread {
+                    statusText.text = "Error: ${e.localizedMessage}"
+                }
+            }
+        }.start()
     }
 }
